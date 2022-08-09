@@ -13,7 +13,9 @@
                   [ring/ring-jetty-adapter          "1.9.4"]
                   [compojure                        "1.6.2"]
                   [de.ubercode.clostache/clostache  "1.4.0"]
-                  [org.clojure/data.json           "2.4.0"]
+                  [org.clojure/data.json            "2.4.0"]
+                  [org.clojure/java.jdbc            "0.7.12"]
+                  [org.postgresql/postgresql        "42.3.6"]
                 ]
   :main ^:skip-aot repository.core
   :target-path "target/%s"

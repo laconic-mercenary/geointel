@@ -13,6 +13,16 @@
         envval
         dflt)))
 
-(defn get-api-url
-    []
-    (get-env "API_URL" "/api/intel"))
+(defn- b64-decode
+    [target]
+    (String. (.decode (java.util.Base64/getDecoder) target)))
+
+(defn get-api-url [] (get-env "API_URL" "/api/intel"))
+
+(defn get-db-host [] (get-env "DB_HOST"))
+
+(defn get-db-port [] (Integer/parseInt (get-env "DB_PORT")))
+
+(defn get-db-username [] (get-env "DB_USERNAME"))
+
+(defn secret-db-password [] (get-env "DB_PASSWORD"))

