@@ -7,14 +7,15 @@
 (def repo-query "select img, latitude, longitude, note from repository")
 
 (defn- get-db-spec []
-    {
-        :dbtype "postgresql"
-        :dbname "geointel"
-        :host (config/get-db-host)
-        :port (config/get-db-port)
-        :user (config/get-db-username)
-        :password (config/secret-db-password)
-    }
+    (config/get-db-url)
+    ;{
+    ;    :dbtype "postgresql"
+    ;    :dbname "geointel"
+    ;    :host (config/get-db-host)
+    ;    :port (config/get-db-port)
+    ;    :user (config/get-db-username)
+    ;    :password (config/secret-db-password)
+    ;}
 )
 
 (defn get-all

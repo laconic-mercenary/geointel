@@ -11,29 +11,31 @@
             const state = {
                 streamRunning: false,
                 geolocationEnabled: false,
-                cameraEnabled: false
+                cameraEnabled: false,
+                watchPositionId: undefined,
+                latestPosition: undefined
             };
             
             const videoDeviceConstraints = {
                 video: {
                     width: {
                         min: 1280,
-                        ideal: 1920,
+                        ideal: 2560,
                         max: 2560,
                     },
                     height: {
                         min: 720,
-                        ideal: 1080,
+                        ideal: 1440,
                         max: 1440
                     },
-                },
-                facingMode: 'environment'
+                    facingMode: 'environment'
+                }
             };
 
             const geolocationOptions = {
                 maximumAge: 1800000,
-                timeout: 20000,
-                enableHighAccuracy: true
+                timeout: 30000,
+                enableHighAccuracy: false
             };
 
             //
@@ -78,18 +80,28 @@
                 return image.replace("data:image/webp;base64,", "");
             }
 
+            const formatNote = (note, noteType, noteClassification) => {
+                if (noteClassification === "none") {
+                    return `${noteType} ## ${note}`;
+                }
+                return `[${noteClassification}] ## ${noteType} ## ${note}`;
+            }
+
             const sendIntel = (position) => {
                 sendAjax(
                     sanitize(document.getElementById("photo").src),
                     position.coords.latitude,
                     position.coords.longitude,
                     position.coords.accuracy,
-                    document.getElementById("notebox").value
-                )
+                    formatNote(
+                        document.getElementById("notebox").value,
+                        document.getElementById("notetype").value, 
+                        document.getElementById("classification").value
+                    )
+                );
             }
 
             const handleAjax = () => {
-                console.log(this.readyState);
                 /* 
                 0: request not initialized 
                 1: server connection established
@@ -121,18 +133,22 @@
                 } 
             }
 
-            const eventLog = (evt) => {
-                console.log(evt);
+            const log = (evt) => {
+                logWith("INFO", evt);
+            }
+
+            const logWith = (level, evt) => {
+                console.log(`[${level}] - ${evt}`);
             }
 
             const sendAjax = (img, lat, lon, accr, nt) => {
-                console.log("sent to {{api-url}}");
+                log("sent to {{api-url}}");
                 var ajax = new XMLHttpRequest();
                 // ajax.onreadystatechange = handleAjax;
-                ajax.addEventListener("progress", eventLog);
-                ajax.addEventListener("load", eventLog);
-                ajax.addEventListener("error", eventLog);
-                ajax.addEventListener("abort", eventLog);
+                ajax.addEventListener("progress", log);
+                ajax.addEventListener("load", log);
+                ajax.addEventListener("error", log);
+                ajax.addEventListener("abort", log);
                 ajax.open("POST", "{{api-url}}");
                 ajax.setRequestHeader("Content-Type", "application/json");
                 ajax.send(JSON.stringify(
@@ -150,18 +166,38 @@
 
             const locationFailed = (error) => {
                 switch(error.code) {
-                    case error.PERMISSION_DENIED:
-                        alert("User denied the request for Geolocation.");
-                        break;
                     case error.POSITION_UNAVAILABLE:
-                        alert("Location information is unavailable.");
+                        alert("Location data NOT AVAILABLE");
+                        break;
+                    case error.PERMISSION_DENIED:
+                        alert("User denied request for Location");
                         break;
                     case error.TIMEOUT:
-                        alert("The request to get user location timed out.");
+                        alert("Timeout on getting Location data ");
                         break;
                     case error.UNKNOWN_ERROR:
                         alert("An unknown error occurred.");
                         break;
+                }
+            }
+
+            const watchPositionSuccess = (pos) => {
+                const highAccuracy = 50; //TODO (meters)
+                const acceptableAccuracy = 150;
+                if (geolocationOptions.enableHighAccuracy) {
+                    if (pos.coords.accuracy < highAccuracy) {
+                        state.latestPosition = pos;
+                    } else {
+                        state.latestPosition = undefined;
+                        logWith("WARN", "not accurate enough: " + pos.coords.accuracy);
+                    }
+                } else {
+                    if (pos.coords.accuracy < acceptableAccuracy) {
+                        state.latestPosition = pos;
+                    } else {
+                        state.latestPosition = undefined;
+                        logWith("WARN", "not accurate enough: " + pos.coords.accuracy);
+                    }
                 }
             }
 
@@ -178,16 +214,26 @@
 
             document.getElementById("send").addEventListener("click", () => {
                 if (document.getElementById("notebox").value.length == 0) {
-                    alert("you didn't specify a note");
-                } else {
-                    var proceed = true;
-                    if (document.getElementById("photo").src == undefined) {
-                        proceed = confirm("no photo - continue?");
-                    }
-                    if (state.geolocationEnabled && proceed) {
-                        navigator.geolocation.getCurrentPosition(sendIntel, locationFailed, geolocationOptions);
-                    }
+                    alert("You didn't specify a note");
+                    return;
+                } 
+                if (document.getElementById("photo").src == undefined) {
+                    alert("No photo taken");
+                    return;
                 }
+                if (!state.geolocationEnabled) {
+                    alert("Location is not enabled");
+                    return;
+                }
+                if (state.latestPosition == undefined) {
+                    if (state.watchPositionId == undefined) {
+                        alert("Please start Location services");
+                    } else {
+                        alert("Location is not accurate enough (consider turning off High Accuracy or wait a bit more)");
+                    }
+                    return;
+                }
+                sendIntel(state.latestPosition);
             });
 
             document.getElementById("stop").addEventListener("click", () => {
@@ -206,8 +252,28 @@
                 }
             });
 
-            document.getElementById("geo-high-accuracy").addEventListener("click", () => {       
-                geolocationOptions.enableHighAccuracy = (document.getElementById("geo-high-accuracy").checked == true);
+            document.querySelectorAll("input[name=geolocation_hiaccuracy]").forEach(function (radio) {
+                radio.addEventListener("click", (e) => {
+                    geolocationOptions.enableHighAccuracy = (e.srcElement.value === "on");
+                });
+            });
+
+            document.querySelectorAll("input[name=geolocation_onoff]").forEach(function (radio) {
+                radio.addEventListener("click", (e) => {
+                    if (state.geolocationEnabled) {
+                        if (e.srcElement.value === "on") {
+                            log("starting location");
+                            state.watchPositionId = navigator.geolocation.watchPosition(watchPositionSuccess, locationFailed, geolocationOptions);
+                        } else {
+                            log("stopping location");
+                            navigator.geolocation.clearWatch(state.watchPositionId);
+                            state.watchPositionId = undefined;
+                            state.latestPosition = undefined;
+                        }
+                    } else {
+                        alert("Location is not enabled");
+                    }
+                });
             });
         };
 
@@ -220,38 +286,95 @@
 
 <style>
 	div {
-        width: 500px;
-        height: 400px;
+        width: 400px;
+        height: 300px;
         border: 2px solid black;
         position: relative;
 	}
 	video {
-        width: 500px;
-        height: 400px;
+        width: 400px;
+        height: 300px;
         object-fit: cover;
 	}
 </style>
 
 <body>
 	<center>
-    <button id="stream">
-        Stream
-    </button>
-    <button id="stop">
-        Stop
-    </button>
-    <button id="photo">
-        Photo
-    </button>
-    <button id="send">
-        Send
-    </button>
+        <table>
+            <tr>
+                <td>Start Camera</td>
+                <td>
+                    <button id="stream">&#127909;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Take Photo</td>
+                <td>
+                    <button id="photo">&#128248;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Stop Camera</td>
+                <td>
+                    <button id="stop">&#128721;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Send</td>
+                <td>
+                    <button id="send">&#128640;</button>
+                </td>
+            </tr>
+        </table>
+        <br />
+        <label id="geo-status" style="color: red;">[geo]</label>
+        <label id="cam-status" style="color: red;">[cam]</label>
+        <label id="tx-status" style="color: black;">[tx]</label>
+        <br />
+    <table>
+        <tr>
+            <td>Geolocation</td>
+            <td>
+                <input type="radio" name="geolocation_onoff" value="on">ON
+                <input type="radio" name="geolocation_onoff" value="off" checked>OFF
+            </td>
+        </tr>
+        <tr>
+            <td>High Accuracy</td>
+            <td>
+                <input type="radio" name="geolocation_hiaccuracy" value="on">ON
+                <input type="radio" name="geolocation_hiaccuracy" value="off" checked>OFF
+            </td>
+        </tr>
+    </table>
     <br />
-    <label id="geo-status" style="color: red;">[geo]</label>
-    <label id="cam-status" style="color: red;">[cam]</label>
-    <label id="tx-status" style="color: black;">[tx]</label>
-    <br />
-    High Accuracy (Geo) <input type="checkbox" id="geo-high-accuracy">
+    <table>
+        <tr>
+            <td>
+                <label for="notetype">Type:</label>
+            </td>
+            <td>
+                <select name="notetype" id="notetype">
+                    <option value="fun" selected>Fun</option>
+                    <option value="life">Life</option>
+                    <option value="business">Business</option>
+                    <option value="undecided">Undecided</option>
+                    <option value="important">IMPORTANT</option>
+                </select>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <label for="classification">Classification:</label>
+            </td>
+            <td>
+                <select name="classification" id="classification">
+                    <option value="none" selected>None</option>
+                    <option value="confidential">Confidential</option>
+                </select>
+            </td>
+        </tr>
+    </table>
     <br />
     <textarea id="notebox" rows="4" cols="50"></textarea>
     <br />
