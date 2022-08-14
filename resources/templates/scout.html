@@ -133,23 +133,19 @@
                 } 
             }
 
-            const log = (evt) => {
-                logWith("INFO", evt);
-            }
-
-            const logWith = (level, evt) => {
-                console.log(`[${level}] - ${evt}`);
-            }
-
             const sendAjax = (img, lat, lon, accr, nt) => {
-                log("sent to {{api-url}}");
+                console.log("sent to {{api-url}}");
                 var ajax = new XMLHttpRequest();
-                // ajax.onreadystatechange = handleAjax;
-                ajax.addEventListener("progress", log);
-                ajax.addEventListener("load", log);
-                ajax.addEventListener("error", log);
-                ajax.addEventListener("abort", log);
                 ajax.open("POST", "{{api-url}}");
+                ajax.onload = function() {
+                    const txStatus = document.getElementById("tx-status");
+                    if (this.status == 200) {
+                        txStatus.style = "color: green";
+                    } else {
+                        txStatus.style = "color: red";
+                        alert(this.responseText);
+                    }
+                };
                 ajax.setRequestHeader("Content-Type", "application/json");
                 ajax.send(JSON.stringify(
                     {
@@ -189,14 +185,14 @@
                         state.latestPosition = pos;
                     } else {
                         state.latestPosition = undefined;
-                        logWith("WARN", "not accurate enough: " + pos.coords.accuracy);
+                        console.log("[WARN] not accurate enough: " + pos.coords.accuracy);
                     }
                 } else {
                     if (pos.coords.accuracy < acceptableAccuracy) {
                         state.latestPosition = pos;
                     } else {
                         state.latestPosition = undefined;
-                        logWith("WARN", "not accurate enough: " + pos.coords.accuracy);
+                        console.log("[WARN] not accurate enough: " + pos.coords.accuracy);
                     }
                 }
             }
@@ -262,10 +258,10 @@
                 radio.addEventListener("click", (e) => {
                     if (state.geolocationEnabled) {
                         if (e.srcElement.value === "on") {
-                            log("starting location");
+                            console.log("starting location");
                             state.watchPositionId = navigator.geolocation.watchPosition(watchPositionSuccess, locationFailed, geolocationOptions);
                         } else {
-                            log("stopping location");
+                            console.log("stopping location");
                             navigator.geolocation.clearWatch(state.watchPositionId);
                             state.watchPositionId = undefined;
                             state.latestPosition = undefined;

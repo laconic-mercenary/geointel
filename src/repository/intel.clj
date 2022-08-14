@@ -11,6 +11,8 @@
 
 (defn- valid-image? [img] (and (< (count img) Long/MAX_VALUE) (> (count img) 100)))
 
+(defn- valid-accuracy? [accr] (and (<= accr 5000) (>= accr 0)))
+
 (s/def ::longitude valid-lon?)
 
 (s/def ::latitude valid-lat?)
@@ -19,17 +21,21 @@
 
 (s/def ::image valid-image?)
 
+(s/def ::accuracy valid-accuracy?)
+
 (defn get-intel 
     []
     (storage/get-all))
 
 (defn add-intel
     [img note lon lat accr]
-    (log/debug (format "adding intel ..."))
-    (if-not (s/valid? ::longitude lon) {:ok false :param-error "invalid longitude"})
-    (if-not (s/valid? ::latitude lat) {:ok false :param-error "invalid latitude"})
-    (if-not (s/valid? ::note note) {:ok false :param-error "invalid note"})
-    (if-not (s/valid? ::image img) {:ok false :param-error "invalid image"})
+    (log/trace "add-intel")
+    (log/debug "validating intel ...")
+    (if-not (s/valid? ::longitude   lon)    {:ok false :param-error "invalid longitude"})
+    (if-not (s/valid? ::latitude    lat)    {:ok false :param-error "invalid latitude"})
+    (if-not (s/valid? ::accuracy    accr)   {:ok false :param-error "invalid accuracy"})
+    (if-not (s/valid? ::note        note)   {:ok false :param-error "invalid note"})
+    (if-not (s/valid? ::image       img)    {:ok false :param-error "invalid image"})
     (log/info (format "intel: coords [%f,%f], note (%s), img (%s..., %d chars)" lon lat note (subs img 0 100) (count img)))
-    (storage/store img lon lat note)
+    (storage/store img lon lat accr note)
 )

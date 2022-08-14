@@ -27,8 +27,6 @@
 
 (defn get-api-url [] (get-env "API_URL" "/api/intel"))
 
-(defn get-db-url [] (get-env "DATABASE_URL"))
-
 (defn get-db-host [] (get-env "DB_HOST"))
 
 (defn get-db-port [] (Integer/parseInt (get-env "DB_PORT")))
@@ -36,3 +34,20 @@
 (defn get-db-username [] (get-env "DB_USERNAME"))
 
 (defn secret-db-password [] (get-env "DB_PASSWORD"))
+
+(defn get-db-url 
+    [] 
+    (let [db-url (get-env "DATABASE_URL" "-")]
+        (if (= db-url "-")
+            {
+                :dbtype "postgresql"
+                :dbname "geointel"
+                :host (get-db-host)
+                :port (get-db-port)
+                :user (get-db-username)
+                :password (secret-db-password)
+            }
+            db-url
+        )
+    )
+)
