@@ -27,6 +27,8 @@
 
 (defn get-api-url [] (get-env "API_URL" "/api/intel"))
 
+(defn secret-intel-key [] (get-env "API_KEY"))
+
 (defn get-db-host [] (get-env "DB_HOST"))
 
 (defn get-db-port [] (Integer/parseInt (get-env "DB_PORT")))

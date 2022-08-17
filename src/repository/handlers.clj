@@ -10,13 +10,17 @@
 (def status-ok 200)
 (def status-err 500)
 (def status-param 400)
+(def status-unauthorized 401)
 (def status-unfound 404)
+
+(def content-json { "Content-Type" "application/json" })
+(def content-text { "Content-Type" "text/html" })
 
 (defn- rx-json
   [status body]
   { 
     :status   status
-    :headers  { "Content-Type" "application/json" }
+    :headers  content-json
     :body     body
   })
 
@@ -24,17 +28,77 @@
   [status body]
   { 
     :status   status
-    :headers  { "Content-Type" "text/html" }
+    :headers  content-text
     :body     body
   })
+
+(defn- persist-intel
+  [decoded-body]
+  (log/trace "persist-intel")
+  (let [result (intel/add-intel (:image decoded-body)
+                                (:note decoded-body)
+                                (-> decoded-body :location :longitude)
+                                (-> decoded-body :location :latitude)
+                                (-> decoded-body :location :accuracy))]
+    (if-not (:ok result)
+      (if (contains? :param-error result)
+        (rx-text status-param (:param-error result))
+        (rx-text status-err "server error"))
+      (rx-text status-ok "ok")
+    )
+  )
+)
+
+(defn- fetch-all-intel
+  []
+  (log/trace "fetch-all-intel")
+  (let [result (intel/get-intel)]
+    (if-not (:ok result)
+      (rx-text status-err "server error")
+      (rx-json status-ok (json/write-str (:entries result))))
+  )
+)
+
+(defn- unauthorized-intel-key
+  []
+  (log/warn "intel api key was INCORRECT")
+  (rx-text status-unauthorized "not authorized")
+)
+
+(defn- unspecified-intel-key
+  []
+  (log/warn "intel api key was not specified")
+  (rx-text status-unauthorized "not authorized")
+)
+
+(defn- do-if-authorized
+  [request handler]
+  (log/trace "do-if-authorized")
+  (let [body (ring/body-string request)
+        decoded-body (json/read-str body :key-fn keyword)
+        headers (:headers request)]
+    (if (contains? :x-intel-api-key headers)
+      (if (intel/authorized? (:x-intel-api-key headers))
+        (handler decoded-body)
+        (unauthorized-intel-key))
+      (unspecified-intel-key))
+  )
+)
 
 (defn index
   [request]
   (mustache/render-resource "templates/scout.html"
                             {
                                 :api-url (config/get-api-url)
+                                :api-key (config/secret-intel-key)
                             }
   )
+)
+
+(defn not-found
+  [request]
+  (log/warn "not-found")
+  (rx-text status-unfound "not found")
 )
 
 (defn api-health
@@ -46,34 +110,11 @@
 (defn get-intel
   [request] 
   (log/trace "get-intel")
-  (let [result  (intel/get-intel)]
-    (if-not (:ok result)
-      (rx-text status-err "server error")
-      (rx-json status-ok (json/write-str (:entries result)))
-    )
-  )
+  (do-if-authorized request fetch-all-intel)
 )
 
 (defn add-intel
-  [request] 
+  [request]
   (log/trace "add-intel")
-  (let [body (ring/body-string request)
-        decoded-body (json/read-str body :key-fn keyword)
-        result (intel/add-intel (:image decoded-body) 
-                                (:note decoded-body) 
-                                (:longitude (:location decoded-body)) 
-                                (:latitude (:location decoded-body))
-                                (:accuracy (:location decoded-body)))]
-    (if-not (:ok result)
-      (if (contains? :param-error result)
-        (rx-text status-param (:param-error result))
-        (rx-text status-err "server error"))
-      (rx-text status-ok "add-intel-ok")
-    )
-  )
+  (do-if-authorized request persist-intel)
 )
-
-(defn not-found
-    [request]
-    (log/warn "not-found")
-    (rx-text status-unfound "not found"))

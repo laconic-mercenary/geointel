@@ -147,6 +147,7 @@
                     }
                 };
                 ajax.setRequestHeader("Content-Type", "application/json");
+                ajax.setRequestHeader("x-intel-api-key", "{{api-key}}");
                 ajax.send(JSON.stringify(
                     {
                         image: img,
@@ -375,7 +376,7 @@
     <textarea id="notebox" rows="4" cols="50"></textarea>
     <br />
 	<div>
-		<video id="vid"></video>
+		<video id="vid" playsinline></video>
         <canvas id="vid-canvas" class="d-none"></canvas>
 	</div>
 	<br />
