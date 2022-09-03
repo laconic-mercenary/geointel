@@ -16,6 +16,7 @@
                   [org.clojure/data.json            "2.4.0"]
                   [org.clojure/java.jdbc            "0.7.12"]
                   [org.postgresql/postgresql        "42.3.6"]
+                  [middlesphere/clj-compress        "0.1.0"]
                 ]
   :main ^:skip-aot repository.core
   :target-path "target/%s"

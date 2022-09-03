@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>geo-intel-app</title>
+	<script>
+        const start = () => {
+
+            const state = {
+                streamRunning: false,
+                geolocationEnabled: false,
+                cameraEnabled: false,
+                watchPositionId: undefined,
+                latestPosition: undefined
+            };
+            
+            const videoDeviceConstraints = {
+                video: {
+                    width: {
+                        min: 1280,
+                        ideal: 2560,
+                        max: 2560,
+                    },
+                    height: {
+                        min: 720,
+                        ideal: 1440,
+                        max: 1440
+                    },
+                    facingMode: 'environment'
+                }
+            };
+
+            const geolocationOptions = {
+                maximumAge: 1800000,
+                timeout: 30000,
+                enableHighAccuracy: false
+            };
+
+            //
+            // FUNCTIONS
+
+            const init = () => {
+                if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+                    state.cameraEnabled = true;
+                    document.getElementById("geo-status").style = "color: green";
+                }
+                if (navigator.geolocation) {
+                    state.geolocationEnabled = true;
+                    document.getElementById("cam-status").style = "color: green";
+                }
+            }
+
+            const stopStream = () => {
+                const video = document.getElementById("vid");
+                video.srcObject.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                state.streamRunning = false;
+            }
+
+            const takePhoto = () => {
+                const canvas = document.getElementById("vid-canvas");
+                const photo = document.getElementById("photo");
+                const video = document.getElementById("vid");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                photo.src = canvas.toDataURL('image/webp');
+            }
+
+            const startStream = async (videoDeviceConstraints) => {
+                const stream = await navigator.mediaDevices.getUserMedia(videoDeviceConstraints);
+                const video = document.getElementById("vid");
+                video.srcObject = stream;
+                state.streamRunning = true;
+            };
+
+            const sanitize = (image) => {
+                return image.replace("data:image/webp;base64,", "");
+            }
+
+            const formatNote = (note, noteType, noteClassification) => {
+                if (noteClassification === "none") {
+                    return `${noteType} ## ${note}`;
+                }
+                return `[${noteClassification}] ## ${noteType} ## ${note}`;
+            }
+
+            const sendIntel = (position) => {
+                sendAjax(
+                    sanitize(document.getElementById("photo").src),
+                    position.coords.latitude,
+                    position.coords.longitude,
+                    position.coords.accuracy,
+                    formatNote(
+                        document.getElementById("notebox").value,
+                        document.getElementById("notetype").value, 
+                        document.getElementById("classification").value
+                    )
+                );
+            }
+
+            const handleAjax = () => {
+                /* 
+                0: request not initialized 
+                1: server connection established
+                2: request received 
+                3: processing request 
+                4: request finished and response is ready
+                */
+                const txStatus = document.getElementById("tx-status");
+                switch(this.readyState) {
+                    case 1:
+                        txStatus.style = "color: gray";
+                        break;
+                    case 2:
+                        txStatus.style = "color: navy";
+                        break;
+                    case 3:
+                        txStatus.style = "color: blue";
+                        break;
+                    case 4:
+                        if (this.status == 200) {
+                            txStatus.style = "color: green";
+                        } else {
+                            txStatus.style = "color: red";
+                            alert(this.status);
+                        }
+                        break;
+                    default:
+                        txStatus.style = "color: black";
+                } 
+            }
+
+            const sendAjax = (img, lat, lon, accr, nt) => {
+                console.log("sent to {{api-url}}");
+                var ajax = new XMLHttpRequest();
+                ajax.open("POST", "{{api-url}}");
+                ajax.onload = function() {
+                    const txStatus = document.getElementById("tx-status");
+                    if (this.status == 200) {
+                        txStatus.style = "color: green";
+                    } else {
+                        txStatus.style = "color: red";
+                        alert(this.responseText);
+                    }
+                };
+                ajax.setRequestHeader("Content-Type", "application/json");
+                ajax.setRequestHeader("x-intel-api-key", "{{api-key}}");
+                ajax.send(JSON.stringify(
+                    {
+                        image: img,
+                        note: nt,
+                        location: {
+                            latitude: lat,
+                            longitude: lon,
+                            accuracy: accr
+                        }
+                    }
+                ));
+            }
+
+            const locationFailed = (error) => {
+                switch(error.code) {
+                    case error.POSITION_UNAVAILABLE:
+                        alert("Location data NOT AVAILABLE");
+                        break;
+                    case error.PERMISSION_DENIED:
+                        alert("User denied request for Location");
+                        break;
+                    case error.TIMEOUT:
+                        alert("Timeout on getting Location data ");
+                        break;
+                    case error.UNKNOWN_ERROR:
+                        alert("An unknown error occurred.");
+                        break;
+                }
+            }
+
+            const watchPositionSuccess = (pos) => {
+                const highAccuracy = 50; //TODO (meters)
+                const acceptableAccuracy = 150;
+                if (geolocationOptions.enableHighAccuracy) {
+                    if (pos.coords.accuracy < highAccuracy) {
+                        state.latestPosition = pos;
+                    } else {
+                        state.latestPosition = undefined;
+                        console.log("[WARN] not accurate enough: " + pos.coords.accuracy);
+                    }
+                } else {
+                    if (pos.coords.accuracy < acceptableAccuracy) {
+                        state.latestPosition = pos;
+                    } else {
+                        state.latestPosition = undefined;
+                        console.log("[WARN] not accurate enough: " + pos.coords.accuracy);
+                    }
+                }
+            }
+
+            //
+            // EVENTS
+
+            init();
+
+            document.getElementById("photo").addEventListener("click", () => {
+                if (state.streamRunning) {
+                    takePhoto();
+                }
+            });
+
+            document.getElementById("send").addEventListener("click", () => {
+                if (document.getElementById("notebox").value.length == 0) {
+                    alert("You didn't specify a note");
+                    return;
+                } 
+                if (document.getElementById("photo").src == undefined) {
+                    alert("No photo taken");
+                    return;
+                }
+                if (!state.geolocationEnabled) {
+                    alert("Location is not enabled");
+                    return;
+                }
+                if (state.latestPosition == undefined) {
+                    if (state.watchPositionId == undefined) {
+                        alert("Please start Location services");
+                    } else {
+                        alert("Location is not accurate enough (consider turning off High Accuracy or wait a bit more)");
+                    }
+                    return;
+                }
+                sendIntel(state.latestPosition);
+            });
+
+            document.getElementById("stop").addEventListener("click", () => {
+                if (state.streamRunning) {
+                    stopStream();
+                }
+            });
+
+            document.getElementById("stream").addEventListener("click", () => {
+                if (!state.streamRunning) {
+                    if (state.cameraEnabled) {
+                        startStream(videoDeviceConstraints);
+                        const video = document.getElementById("vid");
+                        video.play();
+                    }
+                }
+            });
+
+            document.querySelectorAll("input[name=geolocation_hiaccuracy]").forEach(function (radio) {
+                radio.addEventListener("click", (e) => {
+                    geolocationOptions.enableHighAccuracy = (e.srcElement.value === "on");
+                });
+            });
+
+            document.querySelectorAll("input[name=geolocation_onoff]").forEach(function (radio) {
+                radio.addEventListener("click", (e) => {
+                    if (state.geolocationEnabled) {
+                        if (e.srcElement.value === "on") {
+                            console.log("starting location");
+                            state.watchPositionId = navigator.geolocation.watchPosition(watchPositionSuccess, locationFailed, geolocationOptions);
+                        } else {
+                            console.log("stopping location");
+                            navigator.geolocation.clearWatch(state.watchPositionId);
+                            state.watchPositionId = undefined;
+                            state.latestPosition = undefined;
+                        }
+                    } else {
+                        alert("Location is not enabled");
+                    }
+                });
+            });
+        };
+
+        window.addEventListener('DOMContentLoaded', (event) => {
+            start();
+        });
+
+	</script>
+</head>
+
+<style>
+	div {
+        width: 400px;
+        height: 300px;
+        border: 2px solid black;
+        position: relative;
+	}
+	video {
+        width: 400px;
+        height: 300px;
+        object-fit: cover;
+	}
+</style>
+
+<body>
+	<center>
+        <table>
+            <tr>
+                <td>Start Camera</td>
+                <td>
+                    <button id="stream">&#127909;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Take Photo</td>
+                <td>
+                    <button id="photo">&#128248;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Stop Camera</td>
+                <td>
+                    <button id="stop">&#128721;</button>
+                </td>
+            </tr>
+            <tr>
+                <td>Send</td>
+                <td>
+                    <button id="send">&#128640;</button>
+                </td>
+            </tr>
+        </table>
+        <br />
+        <label id="geo-status" style="color: red;">[geo]</label>
+        <label id="cam-status" style="color: red;">[cam]</label>
+        <label id="tx-status" style="color: black;">[tx]</label>
+        <br />
+    <table>
+        <tr>
+            <td>Geolocation</td>
+            <td>
+                <input type="radio" name="geolocation_onoff" value="on">ON
+                <input type="radio" name="geolocation_onoff" value="off" checked>OFF
+            </td>
+        </tr>
+        <tr>
+            <td>High Accuracy</td>
+            <td>
+                <input type="radio" name="geolocation_hiaccuracy" value="on">ON
+                <input type="radio" name="geolocation_hiaccuracy" value="off" checked>OFF
+            </td>
+        </tr>
+    </table>
+    <br />
+    <table>
+        <tr>
+            <td>
+                <label for="notetype">Type:</label>
+            </td>
+            <td>
+                <select name="notetype" id="notetype">
+                    <option value="fun" selected>Fun</option>
+                    <option value="life">Life</option>
+                    <option value="business">Business</option>
+                    <option value="undecided">Undecided</option>
+                    <option value="important">IMPORTANT</option>
+                </select>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <label for="classification">Classification:</label>
+            </td>
+            <td>
+                <select name="classification" id="classification">
+                    <option value="none" selected>None</option>
+                    <option value="confidential">Confidential</option>
+                </select>
+            </td>
+        </tr>
+    </table>
+    <br />
+    <textarea id="notebox" rows="4" cols="50"></textarea>
+    <br />
+	<div>
+		<video id="vid" playsinline></video>
+        <canvas id="vid-canvas" class="d-none"></canvas>
+	</div>
+	<br />
+    <img id="photo" />
+	</center>
+</body>
+</html>
